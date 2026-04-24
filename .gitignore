@@ -1,0 +1,6 @@
+.history/
+__pycache__/
+*.pyc
+*.egg-info/
+.env
+*.log
