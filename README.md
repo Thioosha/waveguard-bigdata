@@ -113,7 +113,7 @@ spark-submit --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0 jobs/wa
 
 ![detector running](screenshots/02_sparksubmit_detector.png)
 
-### 2.2 Capture — Alertes détectées dans fraud-alerts
+### 2.2 Alertes détectées dans fraud-alerts
 
 ```powershell
 docker exec waveguard-kafka kafka-console-consumer --bootstrap-server localhost:9092 --topic fraud-alerts --from-beginning
@@ -121,7 +121,7 @@ docker exec waveguard-kafka kafka-console-consumer --bootstrap-server localhost:
 
 ![fraud alerts](screenshots/02_fraud_alerts.png)
 
-### 2.3 Capture — Fichiers Parquet dans le Data Lake
+### 2.3 Fichiers Parquet dans le Data Lake
 
 ```powershell
 Get-ChildItem C:\tmp\waveguard_lake\
@@ -130,7 +130,7 @@ Get-ChildItem C:\tmp\waveguard_lake\velocity\
 
 ![parquet lake](screenshots/02_parquet_lake.png)
 
-### 2.4 Capture — Spark UI
+### 2.4 Spark UI
 > Ouvrir http://localhost:4040 pendant que le detector tourne
 
 ![spark ui](screenshots/02_spark_ui.png)
