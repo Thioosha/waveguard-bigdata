@@ -290,4 +290,51 @@ Spark JMX ──> Prometheus ──┘        └──> Slack / Email / PagerDu
 
 ---
 
+## Partie 5 — Bonus
+
+### Tentative d'implémentation SASL/PLAIN
+
+Les fichiers `docker-compose.yml` et `kafka_server_jaas.conf` ont été modifiés 
+pour activer SASL/PLAIN sur Kafka. La configuration a échoué car Zookeeper 
+nécessite également une configuration SASL (section `Client` dans le JAAS) 
+qui crée un conflit d'authentification DIGEST-MD5 avec le Zookeeper non sécurisé.
+
+![sasl attempt](screenshots/05_sasl_attempt.png)
+
+![sasl attempt](screenshots/05_sasl_attempt2.png)
+
+### Q9 — Comparaison SASL/PLAIN, SASL/SCRAM et SASL/GSSAPI (Kerberos)
+
+**SASL/PLAIN** transmet les credentials en clair (base64) dans le flux SASL.
+C'est simple à configurer mais les mots de passe sont stockés en clair dans
+le fichier JAAS. Acceptable uniquement en environnement de développement ou
+si le transport est chiffré (TLS). Pour WaveGuard en dev/test : c'est le
+choix pragmatique.
+
+**SASL/SCRAM** (SCRAM-SHA-256 ou SCRAM-SHA-512) stocke les credentials sous
+forme de hash salé dans Zookeeper. Les mots de passe ne transitent jamais en
+clair. La rotation des credentials est possible sans redémarrage du broker.
+Pour WaveGuard en production chez un opérateur Mobile Money : c'est le bon
+compromis sécurité/simplicité. On peut créer/supprimer des users avec
+`kafka-configs --alter --add-config 'SCRAM-SHA-256=[password=...]'` sans
+toucher aux fichiers de config.
+
+**SASL/GSSAPI (Kerberos)** s'appuie sur un KDC (Key Distribution Center)
+centralisé. Aucun mot de passe ne transite sur le réseau — uniquement des
+tickets Kerberos avec durée de vie limitée. C'est le standard enterprise
+pour les grandes organisations avec un Active Directory ou un KDC existant.
+Pour un opérateur Mobile Money de taille nationale avec une infrastructure
+SI existante (AD, LDAP) : Kerberos s'intègre naturellement et centralise
+la gestion des identités.
+
+**Résumé pour un déploiement Mobile Money :**
+
+| Mécanisme | Contexte recommandé |
+|-----------|-------------------|
+| SASL/PLAIN | Dev/test uniquement, jamais en prod |
+| SASL/SCRAM | Production sans infrastructure Kerberos existante |
+| SASL/GSSAPI | Enterprise avec Active Directory / KDC existant |
+
+---
+
 *WaveGuard — EPT Big Data 2025-2026*

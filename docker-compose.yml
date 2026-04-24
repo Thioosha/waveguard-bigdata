@@ -22,18 +22,25 @@ services:
         condition: service_healthy
     ports:
       - "9092:9092"
-      # - "29092:29092"  # Port pour les connexions internes (Docker)
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9093,PLAINTEXT_HOST://0.0.0.0:9092
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9093,PLAINTEXT_HOST://localhost:9092
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
-      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_LISTENERS: SASL_PLAINTEXT://0.0.0.0:9093,SASL_PLAINTEXT_HOST://0.0.0.0:9092
+      KAFKA_ADVERTISED_LISTENERS: SASL_PLAINTEXT://kafka:9093,SASL_PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: SASL_PLAINTEXT:SASL_PLAINTEXT,SASL_PLAINTEXT_HOST:SASL_PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: SASL_PLAINTEXT
+      KAFKA_SASL_ENABLED_MECHANISMS: PLAIN
+      KAFKA_SASL_MECHANISM_INTER_BROKER_PROTOCOL: PLAIN
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_AUTHORIZER_CLASS_NAME: kafka.security.authorizer.AclAuthorizer
+      KAFKA_ALLOW_EVERYONE_IF_NO_ACL_FOUND: "false"
+      KAFKA_SUPER_USERS: "User:admin"
+      KAFKA_OPTS: "-Djava.security.auth.login.config=/etc/kafka/kafka_server_jaas.conf"
+    volumes:
+      - ./kafka_server_jaas.conf:/etc/kafka/kafka_server_jaas.conf
     healthcheck:
-      test: ["CMD", "kafka-topics", "--bootstrap-server", "localhost:9092", "--list"]
+      test: ["CMD", "bash", "-c", "kafka-topics --bootstrap-server localhost:9092 --list --command-config /tmp/admin.properties 2>/dev/null || true"]
       interval: 15s
       timeout: 10s
       retries: 5
@@ -43,8 +50,8 @@ services:
     container_name: waveguard-spark-master
     command: /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master
     ports:
-      - "8080:8080"   # Spark Web UI
-      - "7077:7077"   # Spark Master port
+      - "8080:8080"
+      - "7077:7077"
     environment:
       SPARK_MASTER_HOST: spark-master
       SPARK_MASTER_PORT: 7077
@@ -57,15 +64,13 @@ services:
     depends_on:
       - spark-master
     ports:
-      # - "8081:8081"   # Worker Web UI
       - "8082:8082"
     environment:
       SPARK_WORKER_CORES: 2
       SPARK_WORKER_MEMORY: 2g
-      # SPARK_WORKER_WEBUI_PORT: 8081
       SPARK_WORKER_WEBUI_PORT: 8082
     volumes:
-      - ./jobs:/opt/spark/jobs           # dépôt des scripts Python
+      - ./jobs:/opt/spark/jobs
       - ./checkpoint:/tmp/waveguard_checkpoint
       - ./datalake:/tmp/waveguard_lake
 
@@ -84,10 +89,9 @@ services:
     image: apache/airflow:2.9.0
     container_name: waveguard-airflow
     ports:
-      # - "8082:8080"
       - "8081:8080"
     environment:
-      AIRFLOW__CORE__EXECUTOR: SequentialExecutor 
+      AIRFLOW__CORE__EXECUTOR: SequentialExecutor
       AIRFLOW__CORE__LOAD_EXAMPLES: "false"
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: sqlite:////opt/airflow/airflow.db
     volumes:
@@ -95,8 +99,8 @@ services:
       - airflow_logs:/opt/airflow/logs
     command: >
       bash -c "airflow db init &&
-               airflow users create --username admin --password admin --firstname Admin --lastname Admin --role Admin --email admin@ept.sn &&
-               (airflow webserver & airflow scheduler)"
+              airflow users create --username admin --password admin --firstname Admin --lastname Admin --role Admin --email admin@ept.sn &&
+              (airflow webserver & airflow scheduler)"
 
 volumes:
   grafana_data:
