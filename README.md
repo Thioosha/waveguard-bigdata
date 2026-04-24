@@ -1,6 +1,6 @@
-# WaveGuard — Rapport de synthèse
+# WaveGuard - Rapport de synthèse
 **Système de Détection de Fraude Mobile Money en Temps Réel**
-Ecole Polytechnique de Thiès — Big Data DIC2/GIT 2025-2026
+Ecole Polytechnique de Thiès - Big Data DIC2/GIT 2025-2026
 
 ---
 
@@ -14,7 +14,7 @@ producer.py ──> [Kafka: transactions] ──> waveguard_detector.py (Spark S
 
 ---
 
-## Partie 0 — Mise en place de l'environnement
+## Partie 0 - Mise en place de l'environnement
 
 ### 0.1 Installation des dépendances Python
 
@@ -33,7 +33,7 @@ docker compose ps
 
 ---
 
-## Partie 1 — Ingestion Kafka
+## Partie 1 - Ingestion Kafka
 
 ### 1.1 Création des topics
 
@@ -59,7 +59,7 @@ docker exec waveguard-kafka kafka-topics --bootstrap-server localhost:9092 --des
 
 ---
 
-### Q1 — Justification du nombre de partitions
+### Q1 - Justification du nombre de partitions
 
 **3 partitions pour `transactions`** : le topic transactions reçoit un flux intense (~5 à 20 tx/sec). Avec 3 partitions, 3 consumers Spark peuvent lire en parallèle, ce qui multiplie le débit de traitement. On utilise `sender_id` comme clé Kafka : le partitionneur hash garantit alors que toutes les transactions d'un même compte arrivent dans la même partition, ce qui préserve l'ordre par compte.
 
@@ -87,7 +87,7 @@ docker exec waveguard-kafka kafka-console-consumer --bootstrap-server localhost:
 
 ---
 
-### Q2 — Ordre des messages et configuration du Producer
+### Q2 - Ordre des messages et configuration du Producer
 
 Kafka ne garantit pas l'ordre à l'échelle du topic entier, uniquement au sein d'une partition. Pour s'assurer que toutes les transactions d'un compte arrivent toujours dans la même partition, on utilise `sender_id` comme clé : le partitionneur par défaut (hash de la clé modulo nb_partitions) assigne systématiquement la même clé à la même partition.
 
@@ -95,7 +95,7 @@ Pour renforcer la fiabilité, on configure aussi le Producer avec `acks=all` (co
 
 ---
 
-### Q3 — Kafka vs RabbitMQ pour WaveGuard
+### Q3 - Kafka vs RabbitMQ pour WaveGuard
 
 On choisit **Apache Kafka** pour WaveGuard. WaveGuard doit traiter des millions de transactions par jour en temps réel, et Kafka est conçu pour ça avec son architecture distribuée capable d'absorber des millions de messages par seconde. La rétention des messages est aussi un gros avantage : ça permet de rejouer les données pour corriger des bugs dans les règles de détection sans rien perdre. Et l'intégration native avec Spark Structured Streaming simplifie beaucoup l'architecture.
 
@@ -103,7 +103,7 @@ RabbitMQ ne convient pas ici : les messages sont supprimés après lecture (pas 
 
 ---
 
-## Partie 2 — Spark Structured Streaming
+## Partie 2 - Spark Structured Streaming
 
 ### 2.1 Commande de lancement du detector
 
@@ -137,7 +137,7 @@ Get-ChildItem C:\tmp\waveguard_lake\velocity\
 
 ---
 
-### Q4 — Tumbling Window vs Sliding Window
+### Q4 - Tumbling Window vs Sliding Window
 
 Une **Tumbling Window** est une fenêtre fixe sans chevauchement. Par exemple avec `window('5 min')` on obtient les fenêtres 0:00-5:00, 5:00-10:00, etc. Chaque événement appartient à exactement une fenêtre. Le problème, c'est qu'une attaque à cheval entre deux fenêtres (ex : 4 tx de 4:30 à 5:30) serait répartie et ne déclencherait aucune alerte.
 
@@ -145,21 +145,21 @@ Une **Sliding Window** se chevauche. Avec `window('5 min', '1 min')`, une nouvel
 
 On choisit la sliding window pour la détection de fraude parce qu'un fraudeur peut lancer son attaque à n'importe quel moment, pas forcément au début d'une fenêtre fixe. La sliding garantit que toute séquence de transactions sur 5 minutes sera couverte par au moins une fenêtre complète.
 
-Exemple concret avec nos paramètres : SN_0042 envoie 8 transactions entre 10:03 et 10:07. Les fenêtres [10:03-10:08], [10:02-10:07], etc. sont évaluées — l'une d'elles captera les 8 tx et déclenchera l'alerte VELOCITY_FRAUD.
+Exemple concret avec nos paramètres : SN_0042 envoie 8 transactions entre 10:03 et 10:07. Les fenêtres [10:03-10:08], [10:02-10:07], etc. sont évaluées - l'une d'elles captera les 8 tx et déclenchera l'alerte VELOCITY_FRAUD.
 
 ---
 
-### Q5 — outputMode update vs append
+### Q5 - outputMode update vs append
 
 On utilise `outputMode('update')` pour le sink Kafka parce qu'on veut envoyer une alerte dès qu'elle est mise à jour (ex : un compte passe de 4 à 6 tx dans une fenêtre glissante). Le mode update n'envoie que les lignes nouvelles ou modifiées à chaque micro-batch, ce qui est exactement ce qu'on veut pour des alertes temps réel.
 
 On utilise `outputMode('append')` pour le sink Parquet parce que Parquet est un format immutable : on ne peut pas modifier un fichier déjà écrit. Le mode append n'écrit que les lignes définitives (après le watermark), ce qui est le seul comportement cohérent avec un stockage de ce type.
 
-Le mode `complete` serait problématique ici parce qu'il réécrit toute la table à chaque micro-batch. Sur un volume croissant d'alertes, ça représenterait des I/O qui explosent exponentiellement — inutilisable en production.
+Le mode `complete` serait problématique ici parce qu'il réécrit toute la table à chaque micro-batch. Sur un volume croissant d'alertes, ça représenterait des I/O qui explosent exponentiellement - inutilisable en production.
 
 ---
 
-## Partie 3 — Tolérance aux pannes
+## Partie 3 - Tolérance aux pannes
 
 ### 3.1 Procédure crash et reprise
 
@@ -191,7 +191,7 @@ Get-ChildItem C:\tmp\waveguard_checkpoint\kafka_velocity\offsets\ | Where-Object
 
 ![after crash](screenshots/03_apres_crash.png)
 
-### 3.2 Capture — Arborescence du checkpoint
+### 3.2 Capture - Arborescence du checkpoint
 
 ```powershell
 Get-ChildItem -Recurse C:\tmp\waveguard_checkpoint\ | Select-Object Name, LastWriteTime | Select-Object -First 20
@@ -201,17 +201,17 @@ Get-ChildItem -Recurse C:\tmp\waveguard_checkpoint\ | Select-Object Name, LastWr
 
 ---
 
-### Q6 — Mécanisme de checkpoint Spark
+### Q6 - Mécanisme de checkpoint Spark
 
 Le checkpoint fonctionne en trois étapes à chaque micro-batch. Avant de traiter un batch, Spark écrit dans `offsets/batch_N` les offsets Kafka qu'il va consommer. Il traite ensuite les données et écrit dans les sinks. Une fois le sink écrit avec succès, il enregistre `commits/batch_N` pour marquer le batch comme terminé.
 
 Au redémarrage, Spark regarde le dernier `offsets/N` et `commits/N`. Si `offsets/N` existe mais pas `commits/N`, il reprend le batch N depuis le début. S'ils existent tous les deux, il repart à N+1.
 
-Si on supprime le checkpoint, Spark repart de zéro depuis `startingOffsets='latest'`. Toutes les transactions émises pendant l'arrêt seraient perdues et les compteurs de fenêtres glissantes réinitialisés — ce qui pourrait produire des faux négatifs.
+Si on supprime le checkpoint, Spark repart de zéro depuis `startingOffsets='latest'`. Toutes les transactions émises pendant l'arrêt seraient perdues et les compteurs de fenêtres glissantes réinitialisés - ce qui pourrait produire des faux négatifs.
 
 ---
 
-### Q7 — Conditions pour Exactly-Once end-to-end
+### Q7 - Conditions pour Exactly-Once end-to-end
 
 Pour le **Producer Kafka** : `enable.idempotence=true` évite les doublons en cas de retry, `acks=all` attend la confirmation de tous les replicas. Si on veut aller encore plus loin, `transactional.id` permet des transactions Kafka atomiques.
 
@@ -223,7 +223,7 @@ En résumé : exactly-once est garanti pour le sink Parquet. Pour Kafka-to-Kafka
 
 ---
 
-## Partie 4 — Monitoring Grafana
+## Partie 4 - Monitoring Grafana
 
 ### 4.1 Accès Grafana
 ```
@@ -234,7 +234,7 @@ Password : waveguard
 
 ![grafana login](screenshots/04_grafana_login.png)
 
-### 4.2 Commande — Lancer l'exporter de métriques
+### 4.2 Commande - Lancer l'exporter de métriques
 ```powershell
 python jobs/metrics_exporter.py
 ```
@@ -277,7 +277,7 @@ Condition : velocity_alerts > 10 sur 5 minutes
 
 ---
 
-### Q8 — Architecture de monitoring en production
+### Q8 - Architecture de monitoring en production
 
 En production, on utiliserait **JMX Exporter + Prometheus** pour Kafka (expose les métriques broker, consumer lag, débit) et le **Spark Metrics System** (Dropwizard) côté Spark, avec un Prometheus Pushgateway pour collecter les métriques des jobs. Grafana se connecte ensuite à Prometheus comme datasource.
 
@@ -290,7 +290,7 @@ Spark JMX ──> Prometheus ──┘        └──> Slack / Email / PagerDu
 
 ---
 
-## Partie 5 — Bonus
+## Partie 5 - Bonus
 
 ### Tentative d'implémentation SASL/PLAIN
 
@@ -303,7 +303,9 @@ qui crée un conflit d'authentification DIGEST-MD5 avec le Zookeeper non sécuri
 
 ![sasl attempt](screenshots/05_sasl_attempt2.png)
 
-### Q9 — Comparaison SASL/PLAIN, SASL/SCRAM et SASL/GSSAPI (Kerberos)
+---
+
+### Q9 - Comparaison SASL/PLAIN, SASL/SCRAM et SASL/GSSAPI (Kerberos)
 
 **SASL/PLAIN** transmet les credentials en clair (base64) dans le flux SASL.
 C'est simple à configurer mais les mots de passe sont stockés en clair dans
@@ -320,7 +322,7 @@ compromis sécurité/simplicité. On peut créer/supprimer des users avec
 toucher aux fichiers de config.
 
 **SASL/GSSAPI (Kerberos)** s'appuie sur un KDC (Key Distribution Center)
-centralisé. Aucun mot de passe ne transite sur le réseau — uniquement des
+centralisé. Aucun mot de passe ne transite sur le réseau - uniquement des
 tickets Kerberos avec durée de vie limitée. C'est le standard enterprise
 pour les grandes organisations avec un Active Directory ou un KDC existant.
 Pour un opérateur Mobile Money de taille nationale avec une infrastructure
@@ -337,4 +339,4 @@ la gestion des identités.
 
 ---
 
-*WaveGuard — EPT Big Data 2025-2026*
+*WaveGuard - EPT Big Data 2025-2026*
