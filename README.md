@@ -4,10 +4,6 @@ Ecole Polytechnique de Thiès — Big Data DIC2/GIT 2025-2026
 
 ---
 
-- Etudiant : Adjia Thioro Cheikh SALL
-
----
-
 ## Architecture déployée
 
 ```
@@ -21,25 +17,32 @@ producer.py ──> [Kafka: transactions] ──> waveguard_detector.py (Spark S
 ## Partie 0 — Mise en place de l'environnement
 
 ### 0.1 Installation des dépendances Python
+
 ```powershell
 pip install confluent-kafka pyspark==3.4.0 faker
 ```
 
-### 0.2 Démarrage de la stack Docker
+### 0.2 Démarrage de la stack Docker et vérification
+
 ```powershell
 docker compose up -d
+docker compose ps
 ```
 
-### 0.3 Capture — Services Docker UP
-> Commande : `docker compose ps`
-
-![docker compose ps](screenshots/00_docker_ps.png)
+![docker compose](screenshots/00_docker_ps.png)
 
 ---
 
 ## Partie 1 — Ingestion Kafka
 
 ### 1.1 Création des topics
+
+| Topic        | Partitions | Rôle                            |
+|--------------|------------|---------------------------------|
+| transactions | 3          | Flux principal des transactions |
+| fraud-alerts | 1          | Alertes de fraude détectées     |
+| audit-log    | 2          | Journal d'audit                 |
+
 ```powershell
 docker exec waveguard-kafka kafka-topics --bootstrap-server localhost:9092 --create --topic transactions --partitions 3 --replication-factor 1
 docker exec waveguard-kafka kafka-topics --bootstrap-server localhost:9092 --create --topic fraud-alerts --partitions 1 --replication-factor 1
@@ -48,18 +51,11 @@ docker exec waveguard-kafka kafka-topics --bootstrap-server localhost:9092 --cre
 
 ### 1.2 Vérification des topics créés
 
-> Commande de vérification (describe) :
-> ```powershell
-> docker exec waveguard-kafka kafka-topics --bootstrap-server localhost:9092 --describe --topic transactions
-> ```
+```powershell
+docker exec waveguard-kafka kafka-topics --bootstrap-server localhost:9092 --describe --topic transactions
+```
 
-| Topic        | Partitions | Rôle                            |
-|--------------|------------|---------------------------------|
-| transactions | 3          | Flux principal des transactions |
-| fraud-alerts | 1          | Alertes de fraude détectées     |
-| audit-log    | 2          | Journal d'audit                 |
-
-![kafka topics describe](screenshots/01_kafka_topics_list.png)
+![kafka topics describe](screenshots/01_kafka_topics_create.png)
 
 ---
 
@@ -75,17 +71,17 @@ docker exec waveguard-kafka kafka-topics --bootstrap-server localhost:9092 --cre
 
 ### 1.3 Lancement du producer (terminal 1)
 
-> Commande : `python jobs/producer.py`
-> Montrer les lignes [OK] et les [BURST]
+```powershell
+python jobs/producer.py
+```
 
 ![producer running](screenshots/01_producer_running.png)
 
 ### 1.4 Vérification via le consumer console (terminal 2)
 
-> Dans un second terminal, lancer :
-> ```powershell
-> docker exec waveguard-kafka kafka-console-consumer --bootstrap-server localhost:9092 --topic transactions --from-beginning --max-messages 10
-> ```
+```powershell
+docker exec waveguard-kafka kafka-console-consumer --bootstrap-server localhost:9092 --topic transactions --from-beginning --max-messages 10
+```
 
 ![consumer console](screenshots/01_consumer_console.png)
 
@@ -110,25 +106,27 @@ RabbitMQ ne convient pas ici : les messages sont supprimés après lecture (pas 
 ## Partie 2 — Spark Structured Streaming
 
 ### 2.1 Commande de lancement du detector
+
 ```powershell
 spark-submit --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0 jobs/waveguard_detector.py
 ```
 
+![detector running](screenshots/02_sparksubmit_detector.png)
+
 ### 2.2 Capture — Alertes détectées dans fraud-alerts
-> Dans un nouveau terminal, lancer :
-> ```powershell
-> docker exec waveguard-kafka kafka-console-consumer --bootstrap-server localhost:9092 --topic fraud-alerts --from-beginning
-> ```
-> Prendre la capture quand des JSON avec VELOCITY_FRAUD ou VOLUME_FRAUD apparaissent
+
+```powershell
+docker exec waveguard-kafka kafka-console-consumer --bootstrap-server localhost:9092 --topic fraud-alerts --from-beginning
+```
 
 ![fraud alerts](screenshots/02_fraud_alerts.png)
 
 ### 2.3 Capture — Fichiers Parquet dans le Data Lake
-> Commande :
-> ```powershell
-> Get-ChildItem C:\tmp\waveguard_lake\
-> Get-ChildItem C:\tmp\waveguard_lake\velocity\
-> ```
+
+```powershell
+Get-ChildItem C:\tmp\waveguard_lake\
+Get-ChildItem C:\tmp\waveguard_lake\velocity\
+```
 
 ![parquet lake](screenshots/02_parquet_lake.png)
 
@@ -168,7 +166,11 @@ Le mode `complete` serait problématique ici parce qu'il réécrit toute la tabl
 ```powershell
 # Etape 1 : noter les offsets Spark avant le crash
 Get-ChildItem C:\tmp\waveguard_checkpoint\kafka_velocity\offsets\ | Where-Object { $_.Name -notlike ".*" } | Sort-Object { [int]$_.Name } | Select-Object -Last 5
+```
 
+![before crash](screenshots/03_avant_crash.png)
+
+```powershell
 # Etape 2 : simuler le crash
 # Fermer brutalement le terminal du detector (croix rouge)
 
@@ -178,22 +180,24 @@ Start-Sleep -Seconds 30
 # Etape 4 : relancer SANS toucher au checkpoint
 spark-submit --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0 jobs/waveguard_detector.py
 
+```
+
+![crash](screenshots/03_crash.png)
+
+```powershell
 # Etape 5 : vérifier que Spark a bien repris (nouveaux fichiers d'offset créés)
 Get-ChildItem C:\tmp\waveguard_checkpoint\kafka_velocity\offsets\ | Where-Object { $_.Name -notlike ".*" } | Sort-Object { [int]$_.Name } | Select-Object -Last 5
 ```
 
+![after crash](screenshots/03_apres_crash.png)
+
 ### 3.2 Capture — Arborescence du checkpoint
-> Commande :
-> ```powershell
-> Get-ChildItem -Recurse C:\tmp\waveguard_checkpoint\ | Select-Object Name, LastWriteTime | Select-Object -First 20
-> ```
+
+```powershell
+Get-ChildItem -Recurse C:\tmp\waveguard_checkpoint\ | Select-Object Name, LastWriteTime | Select-Object -First 20
+```
 
 ![checkpoint](screenshots/03_checkpoint.png)
-
-### 3.3 Capture — Logs de reprise après crash
-> Screenshot du terminal Spark après relancement, montrant qu'il reprend le traitement
-
-![crash recovery](screenshots/03_crash_recovery.png)
 
 ---
 
@@ -228,25 +232,48 @@ Login    : admin
 Password : waveguard
 ```
 
+![grafana login](screenshots/04_grafana_login.png)
+
 ### 4.2 Commande — Lancer l'exporter de métriques
 ```powershell
 python jobs/metrics_exporter.py
 ```
 
-### 4.3 Capture — Dashboard WaveGuard (4 panels)
-> Créer dans Grafana : Dashboards → New Dashboard → Add panel
-> Panel 1 : Alertes Vélocité (Stat, seuil rouge > 10)
-> Panel 2 : Alertes Volume (Stat, seuil rouge > 5)
-> Panel 3 : Top Fraudeur (Text)
-> Panel 4 : Total Alertes (Stat)
+![metrics exporter](screenshots/04_metrics_exporter.png)
+
+### 4.3 Dashboard WaveGuard (4 panels)
+
+```
+Créer dans Grafana : Dashboard WaveGuard avec 4 panels
+Panel 1 : Alertes Vélocité (Stat, seuil rouge > 10)
+Panel 2 : Alertes Volume (Stat, seuil rouge > 5)
+Panel 3 : Top Fraudeur (Text)
+Panel 4 : Total Alertes (Stat)
+```
+
+![grafana dashboard setup](screenshots/04_grafana_dashboard_setup1.png)
+
+![grafana dashboard setup](screenshots/04_grafana_dashboard_setup.png)
 
 ![grafana dashboard](screenshots/04_grafana_dashboard.png)
 
-### 4.4 Capture — Alerte configurée
-> Alerting → Alert Rules → New Alert Rule
-> Condition : velocity_alerts > 10 sur 5 minutes
+### 4.4 Alerte configuration
 
-![grafana alert](screenshots/04_grafana_alert.png)
+```
+Condition : velocity_alerts > 10 sur 5 minutes
+```
+
+![grafana alert](screenshots/04_grafana_alert1.png)
+
+![grafana alert](screenshots/04_grafana_alert2.png)
+
+![grafana alert](screenshots/04_grafana_alert3.png)
+
+### 4.5 Alerte configurée
+
+![grafana alert](screenshots/04_grafana_alert4.png)
+
+![grafana alert](screenshots/04_grafana_alert5.png)
 
 ---
 
@@ -260,24 +287,6 @@ L'avantage par rapport au JSON exporter du TP : Prometheus scrappe automatiqueme
 Kafka JMX ──> Prometheus ──> Grafana Dashboards + Alerting
 Spark JMX ──> Prometheus ──┘        └──> Slack / Email / PagerDuty
 ```
-
----
-
-## Récapitulatif des captures d'écran
-
-| #  | Partie | Description                               | Commande / Action                                          |
-|----|--------|-------------------------------------------|------------------------------------------------------------|
-| 00 | P0     | `docker compose ps` — services UP         | `docker compose ps`                                        |
-| 01 | P1     | `kafka-topics --describe` — topic details | `docker exec waveguard-kafka kafka-topics ... --describe`  |
-| 02 | P1     | Producer — logs [OK] + [BURST]            | `python jobs/producer.py`                                  |
-| 03 | P1     | Consumer console — 10 messages JSON       | `kafka-console-consumer ... --max-messages 10`             |
-| 04 | P2     | fraud-alerts — JSON VELOCITY/VOLUME_FRAUD | `kafka-console-consumer ... --topic fraud-alerts`          |
-| 05 | P2     | Data Lake — fichiers Parquet générés      | `Get-ChildItem C:\tmp\waveguard_lake\`                     |
-| 06 | P2     | Spark UI — queries actives                | http://localhost:4040                                      |
-| 07 | P3     | Checkpoint — arborescence fichiers        | `Get-ChildItem -Recurse C:\tmp\waveguard_checkpoint\`      |
-| 08 | P3     | Logs reprise après crash                  | Relancer le detector après crash                           |
-| 09 | P4     | Dashboard Grafana — 4 panels              | http://localhost:3000                                      |
-| 10 | P4     | Alerte Grafana configurée                 | Alerting → Alert Rules                                     |
 
 ---
 
